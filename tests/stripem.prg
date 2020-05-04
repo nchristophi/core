@@ -13,7 +13,6 @@
 
 /*
  * Written by Eddie Runia <eddie@runia.com>
- * www - http://harbour-project.org
  *
  * Placed in the public domain
  */
@@ -103,7 +102,7 @@ METHOD New( cFileName, cMode, nBlock ) CLASS TTextFile
    ENDIF
    ::nBlockSize := nBlock
 
-   RETURN self
+   RETURN Self
 
 //
 // Dispose -> Close the file handle
@@ -119,7 +118,7 @@ METHOD Dispose() CLASS TTextFile
       ENDIF
    ENDIF
 
-   RETURN self
+   RETURN Self
 
 //
 // Read a single line
@@ -202,7 +201,7 @@ METHOD WriteLn( xTxt, lCRLF ) CLASS TTextFile
       ::nLine := ::nLine + 1
    ENDIF
 
-   RETURN self
+   RETURN Self
 
 //
 // Go to a specified line number

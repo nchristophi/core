@@ -1,9 +1,7 @@
 /*
- * Harbour Project source code:
  * Compiler C source generation
  *
  * Copyright 1999 Antonio Linares <alinares@fivetech.com>
- * www - http://harbour-project.org
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -16,9 +14,9 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA (or visit
- * their web site at http://www.gnu.org/).
+ * along with this program; if not, write to the Free Software Foundation,
+ * Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+ * (or visit their website at https://www.gnu.org/licenses/).
  *
  */
 
@@ -169,7 +167,6 @@ void hb_compGenCCode( HB_COMP_DECL, PHB_FNAME pFileName )       /* generates the
    PHB_HINLINE pInline;
    FILE *      yyc; /* file handle for C output */
    HB_BOOL     fHasHbInline = HB_FALSE;
-   int         iFuncSuffix;
 
    hb_fsFNameMerge( szFileName, pFileName );
    if( ! pFileName->szExtension )
@@ -212,6 +209,8 @@ void hb_compGenCCode( HB_COMP_DECL, PHB_FNAME pFileName )       /* generates the
 
    if( pFunc )
    {
+      int iFuncSuffix;
+
       hb_compDumpFindCFunc( HB_COMP_PARAM );
 
       pInline = HB_COMP_PARAM->inlines.pFirst;
@@ -277,7 +276,7 @@ void hb_compGenCCode( HB_COMP_DECL, PHB_FNAME pFileName )       /* generates the
                szFileName[ i ] = '_';
          }
       }
-      fprintf( yyc, "\n\nHB_INIT_SYMBOLS_BEGIN( hb_vm_SymbolInit_%s%s )\n", HB_COMP_PARAM->szPrefix, szFileName );
+      fprintf( yyc, "\n\nHB_INIT_SYMBOLS_BEGIN( hb_vm_SymbolInit_%s )\n", szFileName );
 
       pSym = HB_COMP_PARAM->symbols.pFirst;
       while( pSym )
@@ -439,27 +438,20 @@ void hb_compGenCCode( HB_COMP_DECL, PHB_FNAME pFileName )       /* generates the
 
 static void hb_writeEndInit( HB_COMP_DECL, FILE * yyc, const char * szModulname, const char * szSourceFile )
 {
-#if 0
-   HB_SYMBOL_UNUSED( szSourceFile );
-   fprintf( yyc,
-            "\nHB_INIT_SYMBOLS_END( hb_vm_SymbolInit_%s%s )\n\n",
-                 HB_COMP_PARAM->szPrefix, szModulname );
-#endif
-   fprintf( yyc,
-            "\nHB_INIT_SYMBOLS_EX_END( hb_vm_SymbolInit_%s%s, ",
-            HB_COMP_PARAM->szPrefix, szModulname );
+   fprintf( yyc, "\nHB_INIT_SYMBOLS_EX_END( hb_vm_SymbolInit_%s, ", szModulname );
+   if( HB_COMP_PARAM->fHideSource )
+      szSourceFile = "";
    hb_compGenCString( yyc, ( const HB_BYTE * ) szSourceFile, strlen( szSourceFile ) );
    fprintf( yyc, ", 0x%lx, 0x%04x )\n\n", 0L, HB_PCODE_VER );
 
    fprintf( yyc,
             "#if defined( HB_PRAGMA_STARTUP )\n"
-            "   #pragma startup hb_vm_SymbolInit_%s%s\n"
+            "   #pragma startup hb_vm_SymbolInit_%s\n"
             "#elif defined( HB_DATASEG_STARTUP )\n"
-            "   #define HB_DATASEG_BODY    HB_DATASEG_FUNC( hb_vm_SymbolInit_%s%s )\n"
+            "   #define HB_DATASEG_BODY    HB_DATASEG_FUNC( hb_vm_SymbolInit_%s )\n"
             "   #include \"hbiniseg.h\"\n"
             "#endif\n\n",
-            HB_COMP_PARAM->szPrefix, szModulname,
-            HB_COMP_PARAM->szPrefix, szModulname );
+            szModulname, szModulname );
 }
 
 static void hb_compGenCFunc( FILE * yyc, const char * cDecor, const char * szName,
@@ -506,8 +498,8 @@ static void hb_compGenCByteStr( FILE * yyc, const HB_BYTE * pText, HB_SIZE nLen 
    {
       HB_BYTE uchr = ( HB_BYTE ) pText[ nPos ];
       /*
-       * NOTE: After optimization some Chr(n) can be converted
-       *    into a string containing nonprintable characters.
+       * NOTE: After optimization some Chr( n ) can be converted
+       *    into a string containing non-printable characters.
        *
        * TODO: add switch to use hexadecimal format "%#04x"
        */
@@ -524,7 +516,7 @@ static void hb_compGenCLocalName( PHB_HFUNC pFunc, int iLocal, HB_SIZE nPCodePos
 
    if( cargo->nEndBlockPos > nPCodePos )
    {
-      /* we are accesing variables within a codeblock */
+      /* we are accessing variables within a codeblock */
       /* the names of codeblock variable are lost     */
       if( iLocal < 0 )
          fprintf( cargo->yyc, "\t/* localvar%i */", -iLocal );
@@ -2532,7 +2524,7 @@ static HB_GENC_FUNC( hb_p_pushaparams )
    return 1;
 }
 
-/* NOTE: The  order of functions have to match the order of opcodes
+/* NOTE: The order of functions have to match the order of opcodes
  *       mnemonics
  */
 static const PHB_GENC_FUNC s_verbose_table[] = {
@@ -2675,7 +2667,7 @@ static const PHB_GENC_FUNC s_verbose_table[] = {
    hb_p_enumend,
    hb_p_switch,
    hb_p_pushdate,
-   /* optimalization of inlined math operations (+=, -= */
+   /* optimization of inlined math operations (+=, -= */
    hb_p_pluseqpop,
    hb_p_minuseqpop,
    hb_p_multeqpop,

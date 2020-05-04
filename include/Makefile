@@ -36,7 +36,6 @@ C_HEADERS := \
    hbdate.h \
    hbdbf.h \
    hbdbferr.h \
-   hbdbsort.h \
    hbdefs.h \
    hberrors.h \
    hbexprop.h \
@@ -116,6 +115,7 @@ PRG_HEADERS := \
    hbhash.ch \
    hbhrb.ch \
    hbinkey.ch \
+   hbiousr.ch \
    hblang.ch \
    hblpp.ch \
    hbmacro.ch \

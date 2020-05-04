@@ -17,9 +17,11 @@ LDFLAGS += OP quiet
 ifneq ($(HB_BUILD_WARN),no)
    CFLAGS += -w3
 else
-   CFLAGS += -w1 -wcd201 -wcd367 -wcd368
-   ifneq ($(HB_BUILD_MODE),cpp)
-      CFLAGS += -wcd124 -wcd136
+   CFLAGS += -w1
+   ifeq ($(HB_BUILD_MODE),cpp)
+      CFLAGS += -wcd367 -wcd368
+   else
+      CFLAGS += -wcd124 -wcd136 -wcd201
    endif
 endif
 
@@ -54,7 +56,11 @@ endif
 
 # different SYS values: dos4g (default), pmodew (commercial), causeway,
 # dos32a (DOS/32A LE executable), dos32x (DOS/32A LX executable)
-LDFLAGS += SYS dos32a
+ifeq ($(HB_BUILD_DYN),dostest)
+   LDFLAGS += SYS causeway
+else
+   LDFLAGS += SYS dos32a
+endif
 
 LDLIBS := $(HB_USER_LIBS)
 LDLIBS += $(foreach lib,$(LIBS),$(LIB_DIR)/$(lib))
@@ -63,7 +69,7 @@ ifneq ($(HB_LINKING_RTL),)
    ifneq ($(HB_HAS_WATT),)
       LDLIBS += $(HB_LIB_WATT)/wattcpwf
    endif
-   LDLIBS += $(LIB_DIR)/hbpmcom
+   LDLIBS += $(LIB_DIR)/hbdossrl
 endif
 
 # workaround for not included automatically CLIB in pure C mode builds
@@ -73,12 +79,17 @@ endif
 
 ifeq ($(HB_BUILD_DYN),dostest)
 
+   HB_DYN_COPT := -DHB_DYNLIB -bd
+
    DY := $(LD)
    DFLAGS += OP quiet SYS cwdllr
    DY_OUT :=
    DLIBS := $(foreach lib,$(HB_USER_LIBS),$(lib))
    DLIBS += $(foreach lib,$(LIBS),$(LIB_DIR)/$(lib))
    DLIBS += $(foreach lib,$(SYSLIBS),$(lib))
+   ifneq ($(HB_HAS_WATT),)
+      DLIBS += $(HB_LIB_WATT)/wattcpwf
+   endif
    DLIBS := $(strip $(DLIBS))
 
    ifneq ($(DLIBS),)
@@ -88,7 +99,7 @@ ifeq ($(HB_BUILD_DYN),dostest)
       DLIBS_COMMA :=
    endif
 
-   # NOTE: The empty line directly before 'endef' HAVE TO exist!
+   # NOTE: The empty line directly before 'endef' HAS TO exist!
    define dynlib_object
       @$(ECHO) $(ECHOQUOTE)FILE '$(file)'$(ECHOQUOTE) >> __dyn__.tmp
 

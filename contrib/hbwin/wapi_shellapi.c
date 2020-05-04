@@ -1,9 +1,7 @@
 /*
- * Harbour Project source code:
  * Windows API functions (shellapi.h - shell32.dll)
  *
  * Copyright 2008-2009 Viktor Szakats (vszakats.net/harbour)
- * www - http://harbour-project.org
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -16,9 +14,9 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this software; see the file COPYING.txt.  If not, write to
- * the Free Software Foundation, Inc., 59 Temple Place, Suite 330,
- * Boston, MA 02111-1307 USA (or visit the web site http://www.gnu.org/).
+ * along with this program; see the file LICENSE.txt.  If not, write to
+ * the Free Software Foundation, Inc., 51 Franklin Street, Fifth Floor,
+ * Boston, MA 02110-1301 USA (or visit https://www.gnu.org/licenses/).
  *
  * As a special exception, the Harbour Project gives permission for
  * additional uses of the text contained in its release of Harbour.
@@ -63,7 +61,7 @@ HB_FUNC( WAPI_SHELLEXECUTE )
    void * hParameters;
    void * hDirectory;
 
-   hb_retnint( ( HB_PTRDIFF ) ShellExecute( ( HWND ) hb_parptr( 1 ),
+   hb_retnint( ( HB_PTRUINT ) ShellExecute( ( HWND ) hb_parptr( 1 ),
                                             HB_PARSTR( 2, &hOperation, NULL ), /* edit, explore, open, print, play?, properties? */
                                             HB_PARSTRDEF( 3, &hFile, NULL ),
                                             HB_PARSTR( 4, &hParameters, NULL ),
@@ -75,6 +73,42 @@ HB_FUNC( WAPI_SHELLEXECUTE )
    hb_strfree( hParameters );
    hb_strfree( hDirectory );
 #endif
+}
+
+/* Code by Antonino Perricone */
+
+HB_FUNC( WAPI_SHELLEXECUTE_WAIT )
+{
+   void * hOperation;
+   void * hFile;
+   void * hParameters;
+   void * hDirectory;
+   BOOL retVal;
+   MSG msg;
+   SHELLEXECUTEINFO ShExecInfo = {0};
+   ShExecInfo.cbSize = sizeof(SHELLEXECUTEINFO);
+   ShExecInfo.fMask = SEE_MASK_NOCLOSEPROCESS;
+   ShExecInfo.hwnd = ( HWND ) hb_parptr( 1 );
+   ShExecInfo.lpVerb = HB_PARSTR( 2, &hOperation, NULL );
+   ShExecInfo.lpFile = HB_PARSTRDEF( 3, &hFile, NULL );
+   ShExecInfo.lpParameters =  HB_PARSTR( 4, &hParameters, NULL );
+   ShExecInfo.lpDirectory = HB_PARSTR( 5, &hDirectory, NULL );
+   ShExecInfo.nShow = hb_parnidef( 6, SW_SHOWNORMAL );
+   ShExecInfo.hInstApp = NULL;
+   retVal = ShellExecuteEx(&ShExecInfo);
+   hb_retl( retVal );
+   while( WaitForSingleObject(ShExecInfo.hProcess,1000) != WAIT_OBJECT_0 )
+   {
+      while( PeekMessage( &msg, ( HWND ) NULL, 0, 0, PM_REMOVE ) )
+      {
+         TranslateMessage( &msg );
+         DispatchMessage( &msg );
+      }
+   }
+   hb_strfree( hOperation  );
+   hb_strfree( hFile       );
+   hb_strfree( hParameters );
+   hb_strfree( hDirectory  );
 }
 
 HB_FUNC( WAPI_ISUSERANADMIN )

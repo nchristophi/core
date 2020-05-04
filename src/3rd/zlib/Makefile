@@ -55,9 +55,9 @@ else
 endif
 
 # ORIGIN http://zlib.net/
-# VER    1.2.8
-# URL    http://downloads.sourceforge.net/libpng/zlib128.zip
-# DIFF   zlib.dif
+# VER    1.2.11
+# URL    https://github.com/madler/zlib/archive/v1.2.11.zip
+# DIFF   zlib.diff
 #
 # MAP    README
 # MAP    adler32.c

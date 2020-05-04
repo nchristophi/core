@@ -1,9 +1,7 @@
 /*
- * Harbour Project source code:
  * Get Class helpers
  *
  * Copyright 2000 Ron Pinkas <Ron@Profit-Master.com>
- * www - http://harbour-project.org
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -16,9 +14,9 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this software; see the file COPYING.txt.  If not, write to
- * the Free Software Foundation, Inc., 59 Temple Place, Suite 330,
- * Boston, MA 02111-1307 USA (or visit the web site http://www.gnu.org/).
+ * along with this program; see the file LICENSE.txt.  If not, write to
+ * the Free Software Foundation, Inc., 51 Franklin Street, Fifth Floor,
+ * Boston, MA 02110-1301 USA (or visit https://www.gnu.org/licenses/).
  *
  * As a special exception, the Harbour Project gives permission for
  * additional uses of the text contained in its release of Harbour.
@@ -56,7 +54,7 @@ FUNCTION __Get( bSetGet, cVarName, cPicture, bValid, bWhen )
       RETURN NIL
    ENDIF
 
-   IF ! HB_ISBLOCK( bSetGet )
+   IF ! HB_ISEVALITEM( bSetGet )
       IF FieldPos( cVarName ) > 0
          bSetGet := FieldWBlock( cVarName, Select() )
       ELSEIF ( bSetGet := MemVarBlock( cVarName ) ) == NIL
@@ -75,7 +73,7 @@ FUNCTION __Get( bSetGet, cVarName, cPicture, bValid, bWhen )
     */
    Eval( bSetGet )
 
-   oGet := GetNew(,, bSetGet, cVarName, cPicture )
+   oGet := GetNew( ,, bSetGet, cVarName, cPicture )
 
    oGet:PreBlock := bWhen
    oGet:PostBlock := bValid
@@ -90,7 +88,7 @@ FUNCTION __GetA( bGetArray, cVarName, cPicture, bValid, bWhen, aIndex )
       RETURN NIL
    ENDIF
 
-   IF ! HB_ISBLOCK( bGetArray )
+   IF ! HB_ISEVALITEM( bGetArray )
       /* CA-Cl*pper creates standard SET/GET block here */
       IF FieldPos( cVarName ) > 0
          bGetArray := FieldWBlock( cVarName, Select() )
@@ -105,7 +103,7 @@ FUNCTION __GetA( bGetArray, cVarName, cPicture, bValid, bWhen, aIndex )
       RETURN NIL
    ENDIF
 
-   oGet := GetNew(,, bGetArray, cVarName, cPicture )
+   oGet := GetNew( ,, bGetArray, cVarName, cPicture )
    oGet:SubScript := aIndex
 
    oGet:PreBlock := bWhen

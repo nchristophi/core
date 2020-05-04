@@ -1,34 +1,32 @@
 /*
- * Harbour Project source code:
- *    demonstration code for alternative RDD IO API which uses own
- *    very simple TCP/IP file server with RPC support
- *    All files which names starts 'net:' are redirected to this API.
- *    This is server code giving the following .prg functions:
- *       netio_Listen( [<nPort>], [<cAddress>], [<cRootDir>], [<lRPC>] )
- *                                              -> <pListenSocket> | NIL
- *       netio_Accept( <pListenSocket>, [<nTimeOut>],
- *                     [<cPass>], [<nCompressionLevel>], [<nStrategy>] )
- *                                              -> <pConnectionSocket> | NIL
- *       netio_Compress( <pConnectionSocket>,
- *                       [<cPass>], [<nCompressionLevel>], [<nStrategy>] )
- *                                              -> NIL
- *       netio_Server( <pConnectionSocket> ) -> NIL
- *       netio_ServerStop( <pListenSocket> | <pConnectionSocket> [, <lStop>] )
- *                                              -> NIL
- *       netio_ServerTimeOut( <pConnectionSocket> [, <nTimeOut>] ) -> [<nTimeOut>]
- *       netio_RPC( <pListenSocket> | <pConnectionSocket> [, <lEnable>] )
- *                                              -> <lPrev>
- *       netio_RPCFilter( <pConnectionSocket>,
- *                        <sFuncSym> | <hValue> | NIL ) -> NIL
+ * Demonstration code for alternative RDD IO API which uses own
+ * very simple TCP/IP file server with RPC support
+ * All files which names starts 'net:' are redirected to this API.
+ * This is server code giving the following .prg functions:
+ *    netio_Listen( [<nPort>], [<cAddress>], [<cRootDir>], [<lRPC>] )
+ *                                           --> <pListenSocket> | NIL
+ *    netio_Accept( <pListenSocket>, [<nTimeOut>],
+ *                  [<cPass>], [<nCompressionLevel>], [<nStrategy>] )
+ *                                           --> <pConnectionSocket> | NIL
+ *    netio_Compress( <pConnectionSocket>,
+ *                    [<cPass>], [<nCompressionLevel>], [<nStrategy>] )
+ *                                           --> NIL
+ *    netio_Server( <pConnectionSocket> ) --> NIL
+ *    netio_ServerStop( <pListenSocket> | <pConnectionSocket> [, <lStop>] )
+ *                                           --> NIL
+ *    netio_ServerTimeOut( <pConnectionSocket> [, <nTimeOut>] ) --> [<nTimeOut>]
+ *    netio_RPC( <pListenSocket> | <pConnectionSocket> [, <lEnable>] )
+ *                                           --> <lPrev>
+ *    netio_RPCFilter( <pConnectionSocket>,
+ *                     <sFuncSym> | <hValue> | NIL ) --> NIL
  *
- *       netio_SrvStatus( <pConnectionSocket> [, <nStreamID>] ) -> <nStatus>
- *       netio_SrvSendItem( <pConnectionSocket>, <nStreamID>, <xData> )
- *             -> <lSent>
- *       netio_SrvSendData( <pConnectionSocket>, <nStreamID>, <cData> )
- *             -> <lSent>
+ *    netio_SrvStatus( <pConnectionSocket> [, <nStreamID>] ) --> <nStatus>
+ *    netio_SrvSendItem( <pConnectionSocket>, <nStreamID>, <xData> )
+ *          --> <lSent>
+ *    netio_SrvSendData( <pConnectionSocket>, <nStreamID>, <cData> )
+ *          --> <lSent>
  *
  * Copyright 2009 Przemyslaw Czerpak <druzus / at / priv.onet.pl>
- * www - http://harbour-project.org
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -41,9 +39,9 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this software; see the file COPYING.txt.  If not, write to
- * the Free Software Foundation, Inc., 59 Temple Place, Suite 330,
- * Boston, MA 02111-1307 USA (or visit the web site http://www.gnu.org/).
+ * along with this program; see the file LICENSE.txt.  If not, write to
+ * the Free Software Foundation, Inc., 51 Franklin Street, Fifth Floor,
+ * Boston, MA 02110-1301 USA (or visit https://www.gnu.org/licenses/).
  *
  * As a special exception, the Harbour Project gives permission for
  * additional uses of the text contained in its release of Harbour.
@@ -101,8 +99,7 @@ HB_CONSTREAM, * PHB_CONSTREAM;
 
 typedef struct _HB_CONSRV
 {
-   HB_SOCKET      sd;
-   PHB_ZNETSTREAM zstream;
+   PHB_SOCKEX     sock;
    PHB_FILE       fileTable[ NETIO_FILES_MAX ];
    int            filesCount;
    int            firstFree;
@@ -132,7 +129,7 @@ HB_LISTENSD, * PHB_LISTENSD;
 
 static HB_BOOL s_isDirSep( char c )
 {
-   /* intentionally used explicit values instead of harbour macros
+   /* intentionally used explicit values instead of Harbour macros
     * because client can use different OS
     */
    return c == '/' || c == '\\';
@@ -200,7 +197,7 @@ static int s_srvFileNew( PHB_CONSRV conn, PHB_FILE pFile )
          {
             conn->filesCount++;
             conn->fileTable[ conn->firstFree ] = pFile;
-            return conn->firstFree;
+            return conn->firstFree++;
          }
          conn->firstFree++;
       }
@@ -236,16 +233,10 @@ static PHB_FILE s_srvFileGet( PHB_CONSRV conn, int iFile )
 
 static void s_consrv_disconnect( PHB_CONSRV conn )
 {
-   if( conn->sd != HB_NO_SOCKET )
+   if( conn->sock )
    {
-      hb_socketClose( conn->sd );
-      conn->sd = HB_NO_SOCKET;
-   }
-
-   if( conn->zstream )
-   {
-      hb_znetClose( conn->zstream );
-      conn->zstream = NULL;
+      hb_sockexClose( conn->sock, HB_TRUE );
+      conn->sock = NULL;
    }
 }
 
@@ -266,11 +257,8 @@ static void s_consrv_close( PHB_CONSRV conn )
    if( conn->mutex )
       hb_itemRelease( conn->mutex );
 
-   if( conn->sd != HB_NO_SOCKET )
-      hb_socketClose( conn->sd );
-
-   if( conn->zstream )
-      hb_znetClose( conn->zstream );
+   if( conn->sock )
+      hb_sockexClose( conn->sock, HB_TRUE );
 
    while( conn->filesCount > 0 )
    {
@@ -339,12 +327,12 @@ static void s_consrvRet( PHB_CONSRV conn )
       hb_ret();
 }
 
-static PHB_CONSRV s_consrvNew( HB_SOCKET connsd, const char * szRootPath, HB_BOOL rpc )
+static PHB_CONSRV s_consrvNew( PHB_SOCKEX sock, const char * szRootPath, HB_BOOL rpc )
 {
    PHB_CONSRV conn = ( PHB_CONSRV ) memset( hb_xgrab( sizeof( HB_CONSRV ) ),
                                             0, sizeof( HB_CONSRV ) );
 
-   conn->sd = connsd;
+   conn->sock = sock;
    conn->rpc = rpc;
    conn->timeout = -1;
    if( szRootPath )
@@ -356,77 +344,65 @@ static PHB_CONSRV s_consrvNew( HB_SOCKET connsd, const char * szRootPath, HB_BOO
    return conn;
 }
 
-static long s_srvRecvAll( PHB_CONSRV conn, void * buffer, long len )
+static HB_BOOL s_srvRecvAll( PHB_CONSRV conn, void * buffer, long len )
 {
    HB_BYTE * ptr = ( HB_BYTE * ) buffer;
    long lRead = 0, l;
-   HB_MAXUINT end_timer;
-
-   end_timer = conn->timeout > 0 ? hb_dateMilliSeconds() + conn->timeout : 0;
+   HB_MAXINT timeout = conn->timeout;
+   HB_MAXUINT timer = hb_timerInit( timeout );
 
    while( lRead < len && ! conn->stop )
    {
-      if( conn->zstream )
-         l = hb_znetRead( conn->zstream, conn->sd, ptr + lRead, len - lRead, 1000 );
-      else
-         l = hb_socketRecv( conn->sd, ptr + lRead, len - lRead, 0, 1000 );
-      if( l <= 0 )
-      {
-         if( hb_socketGetError() != HB_SOCKET_ERR_TIMEOUT ||
-             hb_vmRequestQuery() != 0 ||
-             ( end_timer != 0 && end_timer <= hb_dateMilliSeconds() ) )
-            break;
-      }
-      else
+      l = hb_sockexRead( conn->sock, ptr + lRead, len - lRead, 1000 );
+      if( l > 0 )
       {
          lRead += l;
          conn->rd_count += l;
       }
+      else if( l == 0 ||
+               hb_socketGetError() != HB_SOCKET_ERR_TIMEOUT ||
+               ( timeout = hb_timerTest( timeout, &timer ) ) == 0 ||
+               hb_vmRequestQuery() != 0 )
+         break;
    }
 
-   return lRead;
+   return lRead == len;
 }
 
-static long s_srvSendAll( PHB_CONSRV conn, void * buffer, long len )
+static HB_BOOL s_srvSendAll( PHB_CONSRV conn, void * buffer, long len )
 {
    HB_BYTE * ptr = ( HB_BYTE * ) buffer;
-   long lSent = 0, lLast = 1, l;
-   HB_MAXUINT end_timer;
+   long lSent = 0;
 
    if( ! conn->mutex || hb_threadMutexLock( conn->mutex ) )
    {
-      end_timer = conn->timeout > 0 ? hb_dateMilliSeconds() + conn->timeout : 0;
+      HB_MAXINT timeout = conn->timeout;
+      HB_MAXUINT timer = hb_timerInit( timeout );
 
       while( lSent < len && ! conn->stop )
       {
-         if( conn->zstream )
-            l = hb_znetWrite( conn->zstream, conn->sd, ptr + lSent, len - lSent, 1000, &lLast );
-         else
-            l = lLast = hb_socketSend( conn->sd, ptr + lSent, len - lSent, 0, 1000 );
+         long l = hb_sockexWrite( conn->sock, ptr + lSent, len - lSent, 1000 );
          if( l > 0 )
          {
             lSent += l;
             conn->wr_count += l;
          }
-         if( lLast <= 0 )
-         {
-            if( hb_socketGetError() != HB_SOCKET_ERR_TIMEOUT ||
-                hb_vmRequestQuery() != 0 ||
-                ( end_timer != 0 && end_timer <= hb_dateMilliSeconds() ) )
-               break;
-         }
+         else if( hb_socketGetError() != HB_SOCKET_ERR_TIMEOUT ||
+                  ( timeout = hb_timerTest( timeout, &timer ) ) == 0 ||
+                  hb_vmRequestQuery() != 0 )
+            break;
       }
-      if( conn->zstream && lLast > 0 && ! conn->stop )
+      if( lSent == len && ! conn->stop )
       {
-         if( hb_znetFlush( conn->zstream, conn->sd,
-                           conn->timeout > 0 ? conn->timeout : -1 ) != 0 )
+         if( hb_sockexFlush( conn->sock, conn->timeout > 0 ? conn->timeout : -1,
+                             HB_FALSE ) != 0 )
             lSent = -1;
       }
 
       if( conn->mutex )
          hb_threadMutexUnlock( conn->mutex );
    }
-   return lSent;
+   return lSent == len;
 }
 
 static HB_GARBAGE_FUNC( s_listensd_destructor )
@@ -485,7 +461,7 @@ static void s_listenRet( HB_SOCKET sd, const char * szRootPath, HB_BOOL rpc )
       {
          if( ! s_isDirSep( lsd->rootPath[ iLen - 1 ] ) )
          {
-            if( iLen == sizeof( lsd->rootPath ) - 1 )
+            if( iLen == ( int ) sizeof( lsd->rootPath ) - 1 )
                --iLen;
             lsd->rootPath[ iLen ] = HB_OS_PATH_DELIM_CHR;
          }
@@ -500,7 +476,7 @@ static void s_listenRet( HB_SOCKET sd, const char * szRootPath, HB_BOOL rpc )
 }
 
 
-/* netio_RPC( <pListenSocket> | <pConnectionSocket> [, <lEnable>] ) -> <lPrev>
+/* netio_RPC( <pListenSocket> | <pConnectionSocket> [, <lEnable>] ) --> <lPrev>
  */
 HB_FUNC( NETIO_RPC )
 {
@@ -527,7 +503,7 @@ HB_FUNC( NETIO_RPC )
 }
 
 /* netio_RPCFilter( <pConnectionSocket>,
- *                  <sFuncSym> | <hValue> | NIL ) -> NIL
+ *                  <sFuncSym> | <hValue> | NIL ) --> NIL
  */
 HB_FUNC( NETIO_RPCFILTER )
 {
@@ -553,12 +529,12 @@ HB_FUNC( NETIO_RPCFILTER )
    }
 }
 
-/* netio_ServerStop( <pListenSocket> | <pConnectionSocket> [, <lStop>] ) -> NIL
+/* netio_ServerStop( <pListenSocket> | <pConnectionSocket> [, <lStop>] ) --> NIL
  */
 HB_FUNC( NETIO_SERVERSTOP )
 {
    PHB_LISTENSD lsd = s_listenParam( 1, HB_FALSE );
-   HB_BOOL fStop = hb_parldef( 2, 1 );
+   HB_BOOL fStop = hb_parldef( 2, HB_TRUE );
 
    if( lsd )
       lsd->stop = fStop;
@@ -570,7 +546,7 @@ HB_FUNC( NETIO_SERVERSTOP )
    }
 }
 
-/* netio_ServerTimeOut( <pConnectionSocket> [, <nTimeOut>] ) -> [<nTimeOut>]
+/* netio_ServerTimeOut( <pConnectionSocket> [, <nTimeOut>] ) --> [<nTimeOut>]
  */
 HB_FUNC( NETIO_SERVERTIMEOUT )
 {
@@ -585,7 +561,7 @@ HB_FUNC( NETIO_SERVERTIMEOUT )
 }
 
 /* netio_Listen( [<nPort>], [<cIfAddr>], [<cRootDir>], [<lRPC>] )
- *    -> <pListenSocket> | NIL
+ *    --> <pListenSocket> | NIL
  */
 HB_FUNC( NETIO_LISTEN )
 {
@@ -625,7 +601,7 @@ HB_FUNC( NETIO_LISTEN )
 
 /* netio_Accept( <pListenSocket>, [<nTimeOut>],
  *               [<cPass>], [<nCompressionLevel>], [<nStrategy>] )
- *    -> <pConnectionSocket> | NIL
+ *    --> <pConnectionSocket> | NIL
  */
 HB_FUNC( NETIO_ACCEPT )
 {
@@ -654,25 +630,20 @@ HB_FUNC( NETIO_ACCEPT )
 
       if( connsd != HB_NO_SOCKET )
       {
+         PHB_SOCKEX sock;
+
          hb_socketSetKeepAlive( connsd, HB_TRUE );
          hb_socketSetNoDelay( connsd, HB_TRUE );
-         conn = s_consrvNew( connsd, lsd->rootPath, lsd->rpc );
 
-
-         if( iLevel != HB_ZLIB_COMPRESSION_DISABLE )
-         {
-            conn->zstream = hb_znetOpen( iLevel, iStrategy );
-            if( conn->zstream != NULL )
-            {
-               if( keylen )
-                  hb_znetEncryptKey( conn->zstream, hb_parc( 3 ), keylen );
-            }
-            else
-            {
-               s_consrv_close( conn );
-               conn = NULL;
-            }
-         }
+         if( iLevel == HB_ZLIB_COMPRESSION_DISABLE )
+            sock = hb_sockexNew( connsd, NULL, NULL );
+         else
+            sock = hb_sockexNewZNet( connsd, hb_parc( 3 ), keylen,
+                                     iLevel, iStrategy );
+         if( sock != NULL )
+            conn = s_consrvNew( sock, lsd->rootPath, lsd->rpc );
+         else
+            hb_socketClose( connsd );
       }
    }
 
@@ -680,15 +651,16 @@ HB_FUNC( NETIO_ACCEPT )
 }
 
 /* netio_Compress( <pConnectionSocket>,
- *                 [<cPass>], [<nCompressionLevel>], [<nStrategy>] ) -> NIL
+ *                 [<cPass>], [<nCompressionLevel>], [<nStrategy>] ) --> NIL
  */
 HB_FUNC( NETIO_COMPRESS )
 {
    PHB_CONSRV conn = s_consrvParam( 1 );
 
-   if( conn && conn->sd != HB_NO_SOCKET && ! conn->stop )
+   if( conn && conn->sock && ! conn->stop )
    {
       int iLevel, iStrategy, keylen = ( int ) hb_parclen( 2 );
+      PHB_SOCKEX sock;
 
       if( keylen > NETIO_PASSWD_MAX )
          keylen = NETIO_PASSWD_MAX;
@@ -697,63 +669,51 @@ HB_FUNC( NETIO_COMPRESS )
       iStrategy = hb_parnidef( 4, HB_ZLIB_STRATEGY_DEFAULT );
 
       if( iLevel == HB_ZLIB_COMPRESSION_DISABLE )
-      {
-         if( conn->zstream )
-         {
-            hb_znetClose( conn->zstream );
-            conn->zstream = NULL;
-         }
-      }
+         sock = hb_sockexNew( hb_sockexGetHandle( conn->sock ), NULL, NULL );
       else
+         sock = hb_sockexNewZNet( hb_sockexGetHandle( conn->sock ), hb_parc( 2 ), keylen,
+                                  iLevel, iStrategy );
+      if( sock )
       {
-         PHB_ZNETSTREAM zstream = hb_znetOpen( iLevel, iStrategy );
-         if( zstream != NULL )
-         {
-            if( conn->zstream )
-               hb_znetClose( conn->zstream );
-            conn->zstream = zstream;
-            if( keylen )
-               hb_znetEncryptKey( zstream, hb_parc( 2 ), keylen );
-         }
+         hb_sockexClose( conn->sock, HB_FALSE );
+         conn->sock = sock;
       }
    }
 }
 
 static HB_BOOL s_netio_login_accept( PHB_CONSRV conn )
 {
-   if( conn && conn->sd != HB_NO_SOCKET && ! conn->stop && ! conn->login )
+   if( conn && conn->sock && ! conn->stop && ! conn->login )
    {
       HB_BYTE msgbuf[ NETIO_MSGLEN ];
 
-      if( s_srvRecvAll( conn, msgbuf, NETIO_MSGLEN ) == NETIO_MSGLEN &&
+      if( s_srvRecvAll( conn, msgbuf, NETIO_MSGLEN ) &&
           HB_GET_LE_INT32( msgbuf ) == NETIO_LOGIN )
       {
          long len = HB_GET_LE_INT16( &msgbuf[ 4 ] );
 
          if( len < ( long ) sizeof( msgbuf ) &&
              len == ( long ) strlen( NETIO_LOGINSTRID ) &&
-             s_srvRecvAll( conn, msgbuf, len ) == len )
+             s_srvRecvAll( conn, msgbuf, len ) )
          {
             if( memcmp( NETIO_LOGINSTRID, msgbuf, len ) == 0 )
             {
                HB_PUT_LE_UINT32( &msgbuf[ 0 ], NETIO_LOGIN );
                HB_PUT_LE_UINT32( &msgbuf[ 4 ], NETIO_CONNECTED );
                memset( msgbuf + 8, '\0', NETIO_MSGLEN - 8 );
-               if( s_srvSendAll( conn, msgbuf, NETIO_MSGLEN ) == NETIO_MSGLEN )
+               if( s_srvSendAll( conn, msgbuf, NETIO_MSGLEN ) )
                   conn->login = HB_TRUE;
             }
          }
       }
       if( ! conn->login )
          s_consrv_disconnect( conn );
-
-      return conn->login;
    }
 
-   return HB_FALSE;
+   return conn && conn->login;
 }
 
-/* netio_VerifyClient( <pConnectionSocket> ) -> <lAccepted>
+/* netio_VerifyClient( <pConnectionSocket> ) --> <lAccepted>
  */
 HB_FUNC( NETIO_VERIFYCLIENT )
 {
@@ -763,7 +723,7 @@ HB_FUNC( NETIO_VERIFYCLIENT )
       hb_retl( s_netio_login_accept( conn ) );
 }
 
-/* netio_Server( <pConnectionSocket> ) -> NIL
+/* netio_Server( <pConnectionSocket> ) --> NIL
  */
 HB_FUNC( NETIO_SERVER )
 {
@@ -785,6 +745,7 @@ HB_FUNC( NETIO_SERVER )
          int iFileNo, iStreamID, iIndex, iResult;
          HB_FATTR ulAttr;
          HB_U32 uiMsg;
+         HB_FATTR nFlags;
          HB_USHORT uiFlags;
          char * szExt;
          PHB_FILE pFile;
@@ -793,7 +754,7 @@ HB_FUNC( NETIO_SERVER )
 
          msg = buffer;
 
-         if( s_srvRecvAll( conn, msgbuf, NETIO_MSGLEN ) != NETIO_MSGLEN )
+         if( ! s_srvRecvAll( conn, msgbuf, NETIO_MSGLEN ) )
             break;
 
          uiMsg = HB_GET_LE_UINT32( msgbuf );
@@ -812,7 +773,7 @@ HB_FUNC( NETIO_SERVER )
                   if( size + conn->rootPathLen >= ( long ) sizeof( buffer ) )
                      ptr = msg = ( HB_BYTE * ) hb_xgrab( size + conn->rootPathLen + 1 );
                   msg[ size ] = '\0';
-                  if( s_srvRecvAll( conn, msg, size ) != size )
+                  if( ! s_srvRecvAll( conn, msg, size ) )
                      errCode = NETIO_ERR_READ;
                   else
                   {
@@ -845,7 +806,7 @@ HB_FUNC( NETIO_SERVER )
                   if( size + conn->rootPathLen >= ( long ) sizeof( buffer ) )
                      ptr = msg = ( HB_BYTE * ) hb_xgrab( size + conn->rootPathLen + 1 );
                   msg[ size ] = '\0';
-                  if( s_srvRecvAll( conn, msg, size ) != size )
+                  if( ! s_srvRecvAll( conn, msg, size ) )
                      errCode = NETIO_ERR_READ;
                   else
                   {
@@ -876,7 +837,7 @@ HB_FUNC( NETIO_SERVER )
                   if( HB_MAX( size, size2 ) + conn->rootPathLen >= ( long ) sizeof( buffer ) )
                      ptr = msg = ( HB_BYTE * ) hb_xgrab( HB_MAX( size, size2 ) + conn->rootPathLen + 1 );
                   msg[ size ] = '\0';
-                  if( s_srvRecvAll( conn, msg, size ) != size )
+                  if( ! s_srvRecvAll( conn, msg, size ) )
                      errCode = NETIO_ERR_READ;
                   else
                   {
@@ -886,7 +847,7 @@ HB_FUNC( NETIO_SERVER )
                      pszDirSpec = pszName ? hb_strdup( pszName ) : NULL;
 
                      msg[ size2 ] = '\0';
-                     if( size2 && s_srvRecvAll( conn, msg, size2 ) != size2 )
+                     if( size2 && ! s_srvRecvAll( conn, msg, size2 ) )
                         errCode = NETIO_ERR_READ;
                      else if( ! pszName )
                         errCode = NETIO_ERR_WRONG_FILE_PATH;
@@ -940,7 +901,7 @@ HB_FUNC( NETIO_SERVER )
                   if( size + conn->rootPathLen >= ( long ) sizeof( buffer ) )
                      ptr = msg = ( HB_BYTE * ) hb_xgrab( size + conn->rootPathLen + 1 );
                   msg[ size ] = '\0';
-                  if( s_srvRecvAll( conn, msg, size ) != size )
+                  if( ! s_srvRecvAll( conn, msg, size ) )
                      errCode = NETIO_ERR_READ;
                   else
                   {
@@ -991,18 +952,15 @@ HB_FUNC( NETIO_SERVER )
                   if( HB_MAX( size, size2 ) + conn->rootPathLen >= ( long ) sizeof( buffer ) )
                      ptr = msg = ( HB_BYTE * ) hb_xgrab( HB_MAX( size, size2 ) + conn->rootPathLen + 1 );
                   msg[ size ] = '\0';
-                  if( s_srvRecvAll( conn, msg, size ) != size )
+                  if( ! s_srvRecvAll( conn, msg, size ) )
                      errCode = NETIO_ERR_READ;
                   else
                   {
-                     char * szOldName = NULL;
                      const char * szFile = s_consrvFilePath( ( char * ) msg, conn, uiMsg == NETIO_LINKSYM );
-
-                     if( szFile )
-                        szOldName = hb_strdup( szFile );
+                     char * szOldName = szFile ? hb_strdup( szFile ) : NULL;
 
                      msg[ size2 ] = '\0';
-                     if( s_srvRecvAll( conn, msg, size2 ) != size2 )
+                     if( ! s_srvRecvAll( conn, msg, size2 ) )
                         errCode = NETIO_ERR_READ;
                      else if( ! szOldName )
                         errCode = NETIO_ERR_WRONG_FILE_PATH;
@@ -1039,7 +997,7 @@ HB_FUNC( NETIO_SERVER )
                   if( size + conn->rootPathLen >= ( long ) sizeof( buffer ) )
                      ptr = msg = ( HB_BYTE * ) hb_xgrab( size + conn->rootPathLen + 1 );
                   msg[ size ] = '\0';
-                  if( s_srvRecvAll( conn, msg, size ) != size )
+                  if( ! s_srvRecvAll( conn, msg, size ) )
                      errCode = NETIO_ERR_READ;
                   else
                   {
@@ -1073,7 +1031,7 @@ HB_FUNC( NETIO_SERVER )
                   if( size + conn->rootPathLen >= ( long ) sizeof( buffer ) )
                      ptr = msg = ( HB_BYTE * ) hb_xgrab( size + conn->rootPathLen + 1 );
                   msg[ size ] = '\0';
-                  if( s_srvRecvAll( conn, msg, size ) != size )
+                  if( ! s_srvRecvAll( conn, msg, size ) )
                      errCode = NETIO_ERR_READ;
                   else
                   {
@@ -1097,10 +1055,20 @@ HB_FUNC( NETIO_SERVER )
                break;
 
             case NETIO_OPEN:
+            case NETIO_OPEN2:
                size = HB_GET_LE_UINT16( &msgbuf[ 4 ] );
-               uiFlags = HB_GET_LE_UINT16( &msgbuf[ 6 ] );
-               szExt = msgbuf[ 8 ] ? hb_strndup( ( const char * ) &msgbuf[ 8 ],
-                                                 NETIO_MSGLEN - 8 ) : NULL;
+               if( uiMsg == NETIO_OPEN2 )
+               {
+                  nFlags = HB_GET_LE_UINT32( &msgbuf[ 6 ] );
+                  szExt = msgbuf[ 10 ] ? hb_strndup( ( const char * ) &msgbuf[ 10 ],
+                                                     NETIO_MSGLEN - 10 ) : NULL;
+               }
+               else
+               {
+                  nFlags = HB_GET_LE_UINT16( &msgbuf[ 6 ] );
+                  szExt = msgbuf[ 8 ] ? hb_strndup( ( const char * ) &msgbuf[ 8 ],
+                                                    NETIO_MSGLEN - 8 ) : NULL;
+               }
                if( size <= 0 )
                   errCode = NETIO_ERR_WRONG_PARAM;
                else
@@ -1108,7 +1076,7 @@ HB_FUNC( NETIO_SERVER )
                   if( size + conn->rootPathLen >= ( long ) sizeof( buffer ) )
                      ptr = msg = ( HB_BYTE * ) hb_xgrab( size + conn->rootPathLen + 1 );
                   msg[ size ] = '\0';
-                  if( s_srvRecvAll( conn, msg, size ) != size )
+                  if( ! s_srvRecvAll( conn, msg, size ) )
                      errCode = NETIO_ERR_READ;
                   else if( conn->filesCount >= NETIO_FILES_MAX )
                      errCode = NETIO_ERR_FILES_MAX;
@@ -1120,7 +1088,8 @@ HB_FUNC( NETIO_SERVER )
                         errCode = NETIO_ERR_WRONG_FILE_PATH;
                      else
                      {
-                        pFile = hb_fileExtOpen( szFile, szExt, uiFlags, NULL, NULL );
+                        nFlags &= ~ ( HB_FATTR ) FXO_COPYNAME;
+                        pFile = hb_fileExtOpen( szFile, szExt, nFlags, NULL, NULL );
                         if( ! pFile )
                            errCode = s_srvFsError();
                         else
@@ -1153,9 +1122,9 @@ HB_FUNC( NETIO_SERVER )
                   errCode = NETIO_ERR_WRONG_PARAM;
                else
                {
-                  if( size >= ( long ) ( sizeof( buffer ) - NETIO_MSGLEN ) )
+                  if( size > ( long ) ( sizeof( buffer ) - NETIO_MSGLEN ) )
                      ptr = msg = ( HB_BYTE * ) hb_xgrab( size + NETIO_MSGLEN );
-                  if( s_srvRecvAll( conn, msg, size ) != size )
+                  if( ! s_srvRecvAll( conn, msg, size ) )
                      errCode = NETIO_ERR_READ;
                   else
                   {
@@ -1234,7 +1203,7 @@ HB_FUNC( NETIO_SERVER )
                   errCode = NETIO_ERR_WRONG_PARAM;
                else
                {
-                  if( size >= ( long ) ( sizeof( buffer ) - NETIO_MSGLEN ) )
+                  if( size > ( long ) ( sizeof( buffer ) - NETIO_MSGLEN ) )
                      ptr = msg = ( HB_BYTE * ) hb_xgrab( size + NETIO_MSGLEN );
                   pFile = s_srvFileGet( conn, iFileNo );
                   if( pFile == NULL )
@@ -1250,6 +1219,8 @@ HB_FUNC( NETIO_SERVER )
                      HB_PUT_LE_UINT32( &msg[ 4 ], len );
                      HB_PUT_LE_UINT32( &msg[ 8 ], errFsCode );
                      memset( msg + 12, '\0', NETIO_MSGLEN - 12 );
+                     if( len == FS_ERROR )
+                        len = 0;
                   }
                }
                break;
@@ -1272,9 +1243,9 @@ HB_FUNC( NETIO_SERVER )
                   errCode = NETIO_ERR_WRONG_PARAM;
                else
                {
-                  if( size >= ( long ) sizeof( buffer ) )
+                  if( size > ( long ) sizeof( buffer ) )
                      ptr = msg = ( HB_BYTE * ) hb_xgrab( size );
-                  if( s_srvRecvAll( conn, msg, size ) != size )
+                  if( ! s_srvRecvAll( conn, msg, size ) )
                      errCode = NETIO_ERR_READ;
                   else
                   {
@@ -1299,6 +1270,7 @@ HB_FUNC( NETIO_SERVER )
 
             case NETIO_UNLOCK:
                fNoAnswer = HB_TRUE;
+               /* fallthrough */
             case NETIO_LOCK:
             case NETIO_TESTLOCK:
                iFileNo = HB_GET_LE_UINT16( &msgbuf[ 4 ] );
@@ -1420,15 +1392,16 @@ HB_FUNC( NETIO_SERVER )
                   while( *pStreamPtr )
                   {
                      if( ( *pStreamPtr )->id == iStreamID )
-                     {
-                        PHB_CONSTREAM stream = *pStreamPtr;
-                        *pStreamPtr = stream->next;
-                        hb_xfree( stream );
                         break;
-                     }
                      pStreamPtr = &( *pStreamPtr )->next;
                   }
-                  if( *pStreamPtr == NULL )
+                  if( *pStreamPtr != NULL )
+                  {
+                     PHB_CONSTREAM stream = *pStreamPtr;
+                     *pStreamPtr = stream->next;
+                     hb_xfree( stream );
+                  }
+                  else
                      iStreamID = 0;
                   hb_threadMutexUnlock( conn->mutex );
                }
@@ -1446,24 +1419,22 @@ HB_FUNC( NETIO_SERVER )
 
             case NETIO_PROC:
                fNoAnswer = HB_TRUE;
+               /* fallthrough */
             case NETIO_PROCIS:
             case NETIO_PROCW:
             case NETIO_FUNC:
             case NETIO_FUNCCTRL:
-               if( ! conn->rpc )
-               {
-                  errCode = NETIO_ERR_UNSUPPORTED;
-                  break;
-               }
                size = HB_GET_LE_UINT32( &msgbuf[ 4 ] );
                if( size < 2 )
                   errCode = NETIO_ERR_WRONG_PARAM;
                else
                {
-                  if( size >= ( long ) sizeof( buffer ) )
+                  if( size > ( long ) sizeof( buffer ) )
                      ptr = msg = ( HB_BYTE * ) hb_xgrab( size );
-                  if( s_srvRecvAll( conn, msg, size ) != size )
+                  if( ! s_srvRecvAll( conn, msg, size ) )
                      errCode = NETIO_ERR_READ;
+                  else if( ! conn->rpc )
+                     errCode = NETIO_ERR_UNSUPPORTED;
                   else
                   {
                      const char * data = ( const char * ) msg;
@@ -1495,7 +1466,6 @@ HB_FUNC( NETIO_SERVER )
                               HB_SIZE nSize = size - size2;
                               HB_USHORT uiPCount = 0;
                               HB_BOOL fSend = HB_FALSE;
-                              int iStreamType;
 
                               iStreamID = 0;
                               data += size2;
@@ -1519,6 +1489,8 @@ HB_FUNC( NETIO_SERVER )
                               }
                               if( uiMsg == NETIO_FUNCCTRL )
                               {
+                                 int iStreamType;
+
                                  iStreamID = HB_GET_LE_INT32( &msgbuf[ 8 ] );
                                  iStreamType = HB_GET_LE_INT32( &msgbuf[ 12 ] );
                                  hb_vmPush( hb_param( 1, HB_IT_ANY ) );
@@ -1529,17 +1501,22 @@ HB_FUNC( NETIO_SERVER )
                                     iStreamID = 0;
                                  if( iStreamID )
                                  {
-                                    PHB_CONSTREAM stream = ( PHB_CONSTREAM )
-                                            hb_xgrab( sizeof( HB_CONSTREAM ) );
-                                    stream->id = iStreamID;
-                                    stream->type = iStreamType;
-                                    stream->next = conn->streams;
-                                    conn->streams = stream;
-
                                     if( conn->mutex == NULL )
                                        conn->mutex = hb_threadMutexCreate();
-                                    if( ! hb_threadMutexLock( conn->mutex ) )
+                                    if( hb_threadMutexLock( conn->mutex ) )
+                                    {
+                                       PHB_CONSTREAM stream = ( PHB_CONSTREAM )
+                                               hb_xgrab( sizeof( HB_CONSTREAM ) );
+                                       stream->id = iStreamID;
+                                       stream->type = iStreamType;
+                                       stream->next = conn->streams;
+                                       conn->streams = stream;
+                                    }
+                                    else
+                                    {
                                        errCode = NETIO_ERR_REFUSED;
+                                       iStreamID = 0;
+                                    }
                                  }
                                  else
                                     errCode = NETIO_ERR_WRONG_PARAM;
@@ -1624,14 +1601,16 @@ HB_FUNC( NETIO_SERVER )
             case NETIO_SYNC:
                continue;
 
-            default: /* unkown message */
+            default: /* unrecognized message */
                errCode = NETIO_ERR_UNKNOWN_COMMAND;
                break;
          }
 
          if( fNoAnswer )
          {
-            /* continue; */ /* do not send dummy record */
+            #if 0
+            continue; /* do not send dummy record */
+            #endif
             HB_PUT_LE_UINT32( &msg[ 0 ], NETIO_SYNC );
             memset( msg + 4, '\0', NETIO_MSGLEN - 4 );
             len = NETIO_MSGLEN;
@@ -1646,7 +1625,7 @@ HB_FUNC( NETIO_SERVER )
          else
             len += NETIO_MSGLEN;
 
-         errCode = s_srvSendAll( conn, msg, len ) != len;
+         errCode = ! s_srvSendAll( conn, msg, len );
 
          if( ptr )
             hb_xfree( ptr );
@@ -1657,7 +1636,30 @@ HB_FUNC( NETIO_SERVER )
    }
 }
 
-/* netio_SrvSendItem( <pConnectionSocket>, <nStreamID>, <xData> ) -> <lSent>
+/* netio_ServedConnection() --> <pConnectionSocket>
+ */
+HB_FUNC( NETIO_SERVEDCONNECTION )
+{
+   static PHB_DYNS s_pDyns_netio_server = NULL;
+
+   if( s_pDyns_netio_server == NULL )
+      s_pDyns_netio_server = hb_dynsymGetCase( "NETIO_SERVER" );
+
+   if( s_pDyns_netio_server != NULL )
+   {
+      HB_ISIZ nOffset = hb_stackBaseSymbolOffset( hb_dynsymSymbol( s_pDyns_netio_server ) );
+
+      if( nOffset > 0 )
+      {
+         PHB_ITEM pItem = hb_stackItem( nOffset + 2 );
+
+         if( hb_itemGetPtrGC( pItem, &s_gcConSrvFuncs ) != NULL )
+            hb_itemReturn( pItem );
+      }
+   }
+}
+
+/* netio_SrvSendItem( <pConnectionSocket>, <nStreamID>, <xData> ) --> <lSent>
  */
 HB_FUNC( NETIO_SRVSENDITEM )
 {
@@ -1666,7 +1668,7 @@ HB_FUNC( NETIO_SRVSENDITEM )
    PHB_ITEM pItem = hb_param( 3, HB_IT_ANY );
    HB_BOOL fResult = HB_FALSE;
 
-   if( conn && conn->sd != HB_NO_SOCKET && ! conn->stop && conn->mutex &&
+   if( conn && conn->sock && ! conn->stop && conn->mutex &&
        iStreamID && pItem )
    {
       char * itmData, * msg;
@@ -1694,7 +1696,7 @@ HB_FUNC( NETIO_SRVSENDITEM )
             stream = stream->next;
          }
          if( stream && stream->type == NETIO_SRVITEM )
-            fResult = s_srvSendAll( conn, msg, lLen ) == lLen;
+            fResult = s_srvSendAll( conn, msg, lLen );
          hb_threadMutexUnlock( conn->mutex );
       }
       hb_xfree( msg );
@@ -1702,7 +1704,7 @@ HB_FUNC( NETIO_SRVSENDITEM )
    hb_retl( fResult );
 }
 
-/* netio_SrvSendData( <pConnectionSocket>, <nStreamID>, <cData> ) -> <lSent>
+/* netio_SrvSendData( <pConnectionSocket>, <nStreamID>, <cData> ) --> <lSent>
  */
 HB_FUNC( NETIO_SRVSENDDATA )
 {
@@ -1711,7 +1713,7 @@ HB_FUNC( NETIO_SRVSENDDATA )
    long lLen = ( long ) hb_parclen( 3 );
    HB_BOOL fResult = HB_FALSE;
 
-   if( conn && conn->sd != HB_NO_SOCKET && ! conn->stop && conn->mutex &&
+   if( conn && conn->sock && ! conn->stop && conn->mutex &&
        iStreamID && lLen > 0 )
    {
       char * msg;
@@ -1734,7 +1736,7 @@ HB_FUNC( NETIO_SRVSENDDATA )
             stream = stream->next;
          }
          if( stream && stream->type == NETIO_SRVDATA )
-            fResult = s_srvSendAll( conn, msg, lLen ) == lLen;
+            fResult = s_srvSendAll( conn, msg, lLen );
          hb_threadMutexUnlock( conn->mutex );
       }
       hb_xfree( msg );
@@ -1743,7 +1745,7 @@ HB_FUNC( NETIO_SRVSENDDATA )
 }
 
 /* netio_SrvStatus( <pConnectionSocket>
- *                  [, <nStreamID> | <nSrvInfo>, @<xData>] ) -> <nStatus>
+ *                  [, <nStreamID> | <nSrvInfo>, @<xData>] ) --> <nStatus>
  */
 HB_FUNC( NETIO_SRVSTATUS )
 {
@@ -1759,7 +1761,7 @@ HB_FUNC( NETIO_SRVSTATUS )
 
    if( ! conn )
       iStatus = NETIO_SRVSTAT_WRONGHANDLE;
-   else if( conn->sd == HB_NO_SOCKET )
+   else if( conn->sock == NULL )
       iStatus = NETIO_SRVSTAT_CLOSED;
    else if( conn->stop )
       iStatus = NETIO_SRVSTAT_STOPPED;
@@ -1800,7 +1802,7 @@ HB_FUNC( NETIO_SRVSTATUS )
             unsigned int len;
             PHB_ITEM pItem = NULL;
 
-            if( hb_socketGetPeerName( conn->sd, &addr, &len ) == 0 )
+            if( hb_socketGetPeerName( hb_sockexGetHandle( conn->sock ), &addr, &len ) == 0 )
             {
                pItem = hb_socketAddrToItem( addr, len );
                if( addr )
